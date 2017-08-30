@@ -32,6 +32,7 @@ void ParticleFilter::init(double x, double y, double theta, double std[]) {
 
 	default_random_engine gen;
   
+  //Initialize all particles
   for (int i = 0; i < num_particles; i++) {
     Particle p = Particle();
 
@@ -44,6 +45,7 @@ void ParticleFilter::init(double x, double y, double theta, double std[]) {
     particles.push_back(p);
     weights.push_back(1);
   }
+  
   is_initialized = true;
 }
 
@@ -58,22 +60,17 @@ void ParticleFilter::prediction(double delta_t, double std_pos[], double velocit
   normal_distribution<double> dist_y(0, std_pos[1]);
   normal_distribution<double> dist_theta(0, std_pos[2]);
   
-  if(abs(yaw_rate) > 1.0e-6) {
-    for (int i = 0 ; i < num_particles ; i++){
+  //Predict next positions of all particles
+  for (int i = 0 ; i < num_particles ; i++){
       double x = particles[i].x;
       double y = particles[i].y;
       double theta = particles[i].theta;
       
+    if(abs(yaw_rate) > 1.0e-6){
       particles[i].x = x + velocity*(sin(theta + yaw_rate*delta_t) - sin(theta))/yaw_rate + dist_x(gen);
       particles[i].y = y + velocity*(cos(theta) - cos(theta+yaw_rate*delta_t))/yaw_rate + dist_y(gen);
       particles[i].theta = theta + yaw_rate*delta_t + dist_theta(gen);
-    }
-  } else {
-    for (int i = 0 ; i < num_particles ; i++){
-      double x = particles[i].x;
-      double y = particles[i].y;
-      double theta = particles[i].theta;
-      
+    } else {
       particles[i].x = x + velocity*cos(theta)*delta_t + dist_x(gen);
       particles[i].y = y + velocity*sin(theta)*delta_t + dist_y(gen);
       particles[i].theta = theta + dist_theta(gen);
@@ -87,28 +84,10 @@ void ParticleFilter::dataAssociation(std::vector<LandmarkObs> predicted, std::ve
 	// NOTE: this method will NOT be called by the grading code. But you will probably find it useful to 
 	//   implement this method and use it as a helper during the updateWeights phase.
 
-    for(int i = 0 ; i < observations.size() ; i++){
-      double min_dist = 0;
-      int min_ID = 0;
-      
-      for(int k = 0 ; k < predicted.size() ; k++) {
-        double diff_dist_x = predicted[k].x - observations[i].x;
-        double diff_dist_y = predicted[k].y - observations[i].y;
-    
-        double diff_dist = diff_dist_x*diff_dist_x + diff_dist_y*diff_dist_y;
-        if(k == 0) {
-          min_dist = diff_dist;
-          min_ID = 0;
-        } else if(min_dist > diff_dist) {
-          min_dist = diff_dist;
-          min_ID = k;
-        }
-      }
-      observations[i].id = predicted[min_ID].id;
-    }
+  // NOT IMPLEMENTED
 }
 
-void ParticleFilter::updateWeights(double sensor_range, double std_landmark[], 
+void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
 		std::vector<LandmarkObs> observations, Map map_landmarks) {
 	// TODO: Update the weights of each particle using a mult-variate Gaussian distribution. You can read
 	//   more about this distribution here: https://en.wikipedia.org/wiki/Multivariate_normal_distribution
@@ -133,16 +112,13 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
     std::vector<double> sense_x;
     std::vector<double> sense_y;
 
-    
+    //Loop through all observations and convert them into the map cordinate system
     for(int j = 0 ; j < observations.size() ; j++){
       double x_obs = observations[j].x;
       double y_obs = observations[j].y;
       
       double xm = x_par + (cos(theta_par) * x_obs) - (sin(theta_par)*y_obs);
       double ym = y_par + (sin(theta_par) * x_obs) + (cos(theta_par)*y_obs);
-      
-//      observations[j].x = xm;
-//      observations[j].y = ym;
       
       double dist_x, dist_y, dist, min_dist;
       int minID = 0;
@@ -160,6 +136,10 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
           minID = k;
         }
       }
+      //Set associations
+      associations.push_back(map_landmarks.landmark_list[minID].id_i);
+      sense_x.push_back(xm);
+      sense_y.push_back(ym);
       
       //Calculate weight
       double sig_x = std_landmark[0];
@@ -175,32 +155,25 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
       
       // calculate weight using normalization terms and exponent
       double weight= gauss_norm * exp(-exponent);
-      //cout << "weight = " << weight << endl;
       
-      //Loop through number of obeservations
-      if(j == 0) {
+      if(j == 0) {//For first observation of weight
         final_weight = weight;
       } else {
         final_weight = final_weight * weight;
       }
-      associations.push_back(map_landmarks.landmark_list[minID].id_i);
-      sense_x.push_back(xm);
-      sense_y.push_back(ym);
     }
     particles[i].weight = final_weight;
-//    cout << "particles[i].weight =" << particles[i].weight << endl;
     particles[i] = SetAssociations(particles[i], associations, sense_x, sense_y);
   }
   
-  double total_weight = 0;
+  double total_weight = 0.0;
   for(int l = 0 ; l < particles.size() ; l++){
     total_weight += particles[l].weight;
   }
   
-  if(total_weight != 0) {
+  if(total_weight != 0.0) {
     for(int l = 0 ; l < particles.size() ; l++){
       particles[l].weight = particles[l].weight/total_weight;
-      cout << particles[l].weight;
       weights[l] = particles[l].weight;
     }
   }
@@ -214,11 +187,6 @@ void ParticleFilter::resample() {
   std::random_device seed_gen;
   std::mt19937 engine(seed_gen());
   
-//  std::vector<double> probabilities;
-//  for(int i = 0 ; i < particles.size() ; i++){
-//    probabilities.push_back(particles[i].weight);
-//  }
-  
   std::discrete_distribution<> dist {
     weights.begin(),
     weights.end()
@@ -229,7 +197,6 @@ void ParticleFilter::resample() {
   for(int j = 0 ; j < particles.size() ; j++){
     int index = dist(seed_gen);
     particles_new.push_back(particles[index]);
-    cout << "index = " << index << endl;
     weights_new.push_back(weights[index]);
   }
   particles = particles_new;
